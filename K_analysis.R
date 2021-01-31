@@ -17,12 +17,19 @@ jordangarrett@ucsb.edu
 "
 
 # Load necessary packages
-if (!require('rjson')) install.packages('package')
+if (!require('rjson')) install.packages('rjson')
 library(rjson)
 
 
 # ------------- Set up Directories -------------
-dataDir <- '/Users/owner/Downloads/K_Task_Results/'
+if (Sys.info()['sysname'] == 'Windows'){
+  parentDir <- 'D:/WM_Online/'
+} else{
+  parentDir <- '/Users/owner/Downloads'
+}
+
+dataDir <- file.path(parentDir,'K_Task_Results')
+
 
 setwd(dataDir)
 
@@ -46,8 +53,26 @@ Estimate_K <- function(trial_type,responses,set_sizes){
   n_changeTrials.perSetSize <- table(set_sizes[change_trials]) # should be 30 for each
   n_sameTrials.perSetSize <- table(set_sizes[same_trials])
   
-  hit_df <- as.data.frame(table(set_sizes[hitTrials_idx])/n_changeTrials.perSetSize)
-  fa_df <- as.data.frame(table(set_sizes[faTrials_idx])/n_sameTrials.perSetSize)
+  set_size.hits <- table(set_sizes[hitTrials_idx])
+  set_size.fas <- table(set_sizes[faTrials_idx])
+  
+  # check if there are set sizes that need to be logged as zero
+  hits.missing_setSizes <- setdiff(dimnames(set_size.hits), 
+                                   list(as.character(c(1:6))))
+  
+  ## NEED TO FIX HOW WE ARE INPUTTING ZEROS FOR THESE SET SIZES
+  set_size.hits[array(as.character(hits.missing_setSizes))] <- 0
+  
+  fas.missing_setSizes <- setdiff(dimnames(set_size.fas), 
+                                   list(as.character(c(1:6))))
+  
+  set_size.fas[as.character(fas.missing_setSizes)] <- 0
+  
+  set_size.hits <- set_size.hits[order(names(set_size.hits))]
+  set_size.fas <- set_size.fas[order(names(set_size.fas))]
+  
+  hit_df <- as.data.frame(set_size.hits/n_changeTrials.perSetSize)
+  fa_df <- as.data.frame(set_size.fas/n_sameTrials.perSetSize)
   
   k_df <- cbind(hit_df,fa_df[2])
   colnames(k_df) <- c('Set_Size','Hr','FAs')
@@ -65,7 +90,7 @@ Estimate_K <- function(trial_type,responses,set_sizes){
 # ------------- Extract K Estimates -------------
 
 # Dont have Sj numbs, so need to extract all the files
-k_files <- list.files(dataDir, pattern = "*.txt")
+k_files <- list.files(dataDir, pattern = "*jordan.txt")
 
 # Loop through and extract data from files
 all.K_estimates <- array(dim = length(k_files))
