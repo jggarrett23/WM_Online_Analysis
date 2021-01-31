@@ -57,27 +57,49 @@ Estimate_K <- function(trial_type,responses,set_sizes){
   set_size.fas <- table(set_sizes[faTrials_idx])
   
   # check if there are set sizes that need to be logged as zero
-  hits.missing_setSizes <- setdiff(dimnames(set_size.hits), 
-                                   list(as.character(c(1:6))))
+  hits.missing_setSizes <- as.character(setdiff(c(1:6),
+                                   as.integer(unlist(dimnames(set_size.hits)))))
+  
   
   ## NEED TO FIX HOW WE ARE INPUTTING ZEROS FOR THESE SET SIZES
-  set_size.hits[array(as.character(hits.missing_setSizes))] <- 0
   
-  fas.missing_setSizes <- setdiff(dimnames(set_size.fas), 
-                                   list(as.character(c(1:6))))
+  fas.missing_setSizes <- as.character(setdiff(c(1:6)
+                                  ,as.integer(unlist(dimnames(set_size.fas))))) 
   
-  set_size.fas[as.character(fas.missing_setSizes)] <- 0
+  set_size.hits <- as.data.frame(set_size.hits)
+  set_size.fas <- as.data.frame(set_size.fas)
   
-  set_size.hits <- set_size.hits[order(names(set_size.hits))]
-  set_size.fas <- set_size.fas[order(names(set_size.fas))]
+  set_size.hits$Var1 <- factor(set_size.hits$Var1, levels = c(1:6))
+  set_size.fas$Var1 <- factor(set_size.fas$Var1, levels = c(1:6))
   
-  hit_df <- as.data.frame(set_size.hits/n_changeTrials.perSetSize)
-  fa_df <- as.data.frame(set_size.fas/n_sameTrials.perSetSize)
+  if (length(hits.missing_setSizes)){
+    hits.missing_setSizes <- strsplit(unlist(hits.missing_setSizes),"")
+    for(iSet in hits.missing_setSizes){
+      set_size.hits <- rbind(set_size.hits, c(iSet,0))
+    }
+  }
   
-  k_df <- cbind(hit_df,fa_df[2])
+  if (length(fas.missing_setSizes)){
+    fas.missing_setSizes <- strsplit(unlist(fas.missing_setSizes),"")
+    for(iSet in fas.missing_setSizes){
+      set_size.fas <- rbind(set_size.fas, c(iSet,0))
+    }
+  }
+  
+  set_size.hits <- set_size.hits[order(set_size.hits$Var1),]
+  set_size.fas <-  set_size.fas[order(set_size.fas$Var1),]
+  
+  set_size.hits$Freq <- as.numeric(set_size.hits$Freq) 
+  set_size.fas$Freq <- as.numeric(set_size.fas$Freq)
+  
+  
+  hit_rate <- cbind(set_size.hits$Var1,
+                                set_size.hits$Freq/n_changeTrials.perSetSize)
+  fa_rate <- cbind(set_size.fas$Var1,
+                               set_size.fas$Freq/n_sameTrials.perSetSize)
+  
+  k_df <- as.data.frame(cbind(hit_rate,fa_rate[,2]))
   colnames(k_df) <- c('Set_Size','Hr','FAs')
-  
-  k_df$Set_Size <- as.numeric(k_df$Set_Size)
   
   # N[(h-f)/(1-f)]
   k_df$k_hat <- k_df$Set_Size*((k_df$Hr-k_df$FAs)/(1-k_df$FAs))
@@ -90,7 +112,7 @@ Estimate_K <- function(trial_type,responses,set_sizes){
 # ------------- Extract K Estimates -------------
 
 # Dont have Sj numbs, so need to extract all the files
-k_files <- list.files(dataDir, pattern = "*jordan.txt")
+k_files <- list.files(dataDir, pattern = "*.txt")
 
 # Loop through and extract data from files
 all.K_estimates <- array(dim = length(k_files))
