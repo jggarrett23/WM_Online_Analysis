@@ -9,6 +9,9 @@ K algorithm used from Pashler (1988):
     h = hit rate (Hit = correct change detection; 
                   Correct Rejection = correct no change detection)
     f = false alarm rate (Responding change when no change)
+    
+    Note: hit rate = number of hits / number of change trials
+          false alarm rate = number of false alarms/ number of same trials
 
 Author: Jordan Garrett
 UCSB Attention Lab
@@ -18,7 +21,9 @@ jordangarrett@ucsb.edu
 
 # Load necessary packages
 if (!require('rjson')) install.packages('rjson')
+if (!require('googlesheets4')) install.packages('googlesheets4')
 library(rjson)
+library(googlesheets4)
 
 
 # ------------- Set up Directories -------------
@@ -109,17 +114,56 @@ Estimate_K <- function(trial_type,responses,set_sizes){
   return(k_df)
 }
 
+# --- Extract Sj Numbers from Google Sheets ---
+
+exp_info <- read_sheet('https://docs.google.com/spreadsheets/d/1CtW0BKpcAn0M8aK9PbRPH2Tz7zLYz0nSRQ7KenTdroU/edit#gid=0')
+k_fileNumbs <- exp_info$`File Suffix #...9`
+subjects <- exp_info$`Sj ID`
+
+subjects <- subjects[!is.na(subjects)]
+
+
+
+# --- Load file containing already calculated Sj Estimates ---
+if (file.exists(file.path(dataDir,'All_K_Estimates.csv'))){
+  master_k_df <- read.csv(file.path(dataDir,'All_K_Estimates.csv'))
+  old_subjects <- master_k_df$Sj_Numb
+  
+  # only keep subjects that havent been analyzed
+  subjects <- setdiff(subjects,old_subjects)
+  
+} else {
+  master_k_df <- data.frame(Sj_Numb = double(),
+                            Set6_K = double(),
+                            Kmax = double())
+}
+
+if(length(subjects) == 0){
+  stop('No new subjects to be analyzed')
+}
+ 
+
+
 # ------------- Extract K Estimates -------------
 
-# Dont have Sj numbs, so need to extract all the files
-k_files <- list.files(dataDir, pattern = "*.txt")
+jatos_file.Prefix <- 'jatos_results_'
 
 # Loop through and extract data from files
-all.K_estimates <- array(dim = length(k_files))
-for(iFile in 1:length(k_files)){
+all.K_estimates <- data.frame(Sj_Numb = double(),
+                              Set6_K = double(),
+                              Kmax = double())
+for(iSub in 1:length(subjects)){
+  
+  sj_numb <- subjects[iSub]
+  
+  # grab file suffix from google sheet
+  file_suffix <- as.character(k_fileNumbs[iSub])
+  
+  k_filename <- paste(jatos_file.Prefix,file_suffix,
+                      '.txt',sep = '')
   
   # load JSON, output is a list of lists
-  trial_data <- fromJSON(file = k_files[iFile])
+  trial_data <- fromJSON(file = k_filename)
   
   # change/no change trial assignments
   trial_type <- trial_data$TrialType
@@ -132,7 +176,16 @@ for(iFile in 1:length(k_files)){
   # estimate hr, fa, and k
   sdt.k.estimates <- Estimate_K(trial_type,trial_responses,set_sizes)
   
-  average.k <- round(mean(sdt.k.estimates$K),2)
+  Kmax <- round(max(sdt.k.estimates['K']),2)
   
-  all.K_estimates[iFile] <- average.k
+  all.K_estimates[iSub,'Sj_Numb'] <- sj_numb
+  all.K_estimates[iSub,'Set6_K'] <- round(sdt.k.estimates[6,'K'],2)
+  all.K_estimates[iSub,'Kmax'] <- Kmax
 }
+
+master_k_df <- rbind(master_k_df,all.K_estimates)
+
+write.csv(master_k_df,
+          file.path(dataDir,'All_K_Estimates.csv'),
+          row.names = F)
+
