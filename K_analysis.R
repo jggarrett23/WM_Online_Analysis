@@ -33,7 +33,8 @@ if (Sys.info()['sysname'] == 'Windows'){
   parentDir <- '/Users/owner/Downloads'
 }
 
-dataDir <- file.path(parentDir,'K_Task_Results')
+dataDir <- file.path(parentDir,'Raw_Data/K_Task')
+saveDir <- file.path(parentDir,'Data_Compiled')
 
 
 setwd(dataDir)
@@ -115,7 +116,7 @@ Estimate_K <- function(trial_type,responses,set_sizes){
 }
 
 # --- Extract Sj Numbers from Google Sheets ---
-
+gs4_auth(email = 'jordangarrett@ucsb.edu')
 exp_info <- read_sheet('https://docs.google.com/spreadsheets/d/1CtW0BKpcAn0M8aK9PbRPH2Tz7zLYz0nSRQ7KenTdroU/edit#gid=0')
 k_fileNumbs <- exp_info$`File Suffix #...9`
 subjects <- exp_info$`Sj ID`
@@ -123,7 +124,10 @@ subjects <- exp_info$`Sj ID`
 subjects <- subjects[!is.na(subjects)]
 
 
+# for sessions that didn't work out (see df notes)
+exclude_subs <- c(2)
 
+subjects <- setdiff(subjects,exclude_subs)
 # --- Load file containing already calculated Sj Estimates ---
 if (file.exists(file.path(dataDir,'All_K_Estimates.csv'))){
   master_k_df <- read.csv(file.path(dataDir,'All_K_Estimates.csv'))
@@ -186,6 +190,6 @@ for(iSub in 1:length(subjects)){
 master_k_df <- rbind(master_k_df,all.K_estimates)
 
 write.csv(master_k_df,
-          file.path(dataDir,'All_K_Estimates.csv'),
+          file.path(saveDir,'All_K_Estimates.csv'),
           row.names = F)
 
