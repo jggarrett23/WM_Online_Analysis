@@ -41,7 +41,8 @@ precision_fileNumbs <- exp_info$`File Suffix #...15`
 
 subjects <- subjects[!is.na(subjects)]
 
-exclude_subs <- c(1:4,9:10) #this is key for deciding which subjects are processed
+#this is key for deciding which subjects are processed
+exclude_subs <- c(1:4,9:10,12,14) 
 
 subjects <- setdiff(subjects,exclude_subs)
 
@@ -108,6 +109,12 @@ if(file.exists(file.path(saveDir,'All_Sj_Precision_Data.RDS'))){
 
 jatos_file.Prefix <- 'jatos_results_'
 
+# use for checking if the sample orientations are truly uniform
+all_samp_orientations <- c()
+
+# use for categorical confusion matrices. Treat 0 and 360 as the same
+cc_bins <- seq(0,315,by=45)
+
 for(iSub in 1:length(subjects)){
   
   sj_numb <- subjects[iSub]
@@ -136,6 +143,9 @@ for(iSub in 1:length(subjects)){
   
   #---------------- Overall Precision ----------------------
   sample_orientations <- unlist(trial_data$SampleProbeAngles)
+  
+  all_samp_orientations <- rbind(all_samp_orientations,sample_orientations)
+
   resp_orientations <- unlist(trial_data$RespProbeAngles)
   
   overall.resp_error <- sample_orientations - resp_orientations
@@ -311,6 +321,60 @@ for(iSub in 1:length(subjects)){
   ss6_loc.mean_error <- unlist(lapply(ss6_loc.stats, function(x){x$mean}))
   ss6_loc.MRVL <- unlist(lapply(ss6_loc.stats, function(x){x$MRVL}))
   
+  # ---------------- Categorical Confusion Matrices ----------------------
+  # bin sample and response angles into 45 degree bins
+  cc_matrix <- array(rep(0,2*length(loc_bins)*length(loc_bins)),
+    dim=c(2,length(loc_bins),length(loc_bins)))
+  dimnames(cc_matrix) <- list(c(2,6),loc_bins,loc_bins)
+  for(iSet_size in 1:length(c(2,6))){
+    current_ss <- c(2,6)[iSet_size]
+    ss_trials <- which(trial_data$SetSize == current_ss)
+    
+    for (iTrial in 1:length(ss_trials)){
+        current_trial <- ss_trials[iTrial]
+        locs <- unlist(trial_data$SampleLocBin[current_trial])
+        samp_orient <- unlist(trial_data$SampleProbeAngles[current_trial])
+        resp_orient <- unlist(trial_data$RespProbeAngles[current_trial])
+        
+        #get categorical bins. Use directional statistics
+        samp_orient.bin <- sapply(samp_orient,
+                                  function(x){which.min(abs(Arg(exp(1i*(x-cc_bins)*(pi/180)))))})
+        resp_orient.bin <- sapply(resp_orient,
+                                  function(x){which.min(abs(Arg(exp(1i*(x-cc_bins)*(pi/180)))))})
+        
+        for (iLoc in 1:length(locs)){
+          current_loc <- locs[iLoc]
+          i.loc_idx <- which(loc_bins == current_loc)
+          
+          # diagonal
+          if(samp_orient.bin[iLoc] == resp_orient.bin[iLoc]){
+            cc_matrix[iSet_size,i.loc_idx,i.loc_idx] <- cc_matrix[iSet_size,i.loc_idx,i.loc_idx] + 1
+          }
+          
+          # off diagonal
+          for (jLoc in 1:length(locs)){
+            if(iLoc != jLoc){
+              j_loc <- locs[jLoc]
+              j.loc_idx <- which(loc_bins == j_loc)
+              
+              # response at j location in same bin as sample angle at i location
+              if(samp_orient.bin[iLoc] == resp_orient.bin[jLoc]){
+                cc_matrix[iSet_size,j.loc_idx,i.loc_idx] <- cc_matrix[iSet_size,j.loc_idx,i.loc_idx] + 1
+              }
+            }
+          }
+          
+        }
+    }
+    
+    #normalize the confusion matrix by dividing each column
+    #by the number of trials the location appears
+    loc.freq <- as.vector(table(unlist(trial_data$SampleLocBin[ss_trials])))
+    cc_matrix[iSet_size,,] <- cc_matrix[iSet_size,,] / loc.freq
+    
+  }
+  
+  
   # ---------------- Store Error Data ----------------
   
   #overall precision
@@ -329,7 +393,7 @@ for(iSub in 1:length(subjects)){
   all_sj.precision_data$location_overall$mean_error[[iSub]] <- overall_locError.mean
   all_sj.precision_data$location_overall$MRVL[[iSub]] <- overall_locError.MRVL
   
-  #error per set size
+  #error per location x set size
   all_sj.precision_data$location.by.ss$ss1$mean_error[[iSub]] <- ss1_loc.mean_error
   all_sj.precision_data$location.by.ss$ss1$MRVL[[iSub]] <- ss1_loc.MRVL
   
@@ -339,7 +403,8 @@ for(iSub in 1:length(subjects)){
   all_sj.precision_data$location.by.ss$ss6$mean_error[[iSub]] <- ss6_loc.mean_error
   all_sj.precision_data$location.by.ss$ss6$MRVL[[iSub]] <- ss6_loc.MRVL
   
-  
+  #categorical confusion matrices
+  all_sj.precision_data$cc_matrix[[iSub]] <- cc_matrix 
 }
 
 all_sj.precision_data$sj_numbs <- subjects
