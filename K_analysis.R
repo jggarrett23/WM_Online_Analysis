@@ -66,9 +66,6 @@ Estimate_K <- function(trial_type,responses,set_sizes){
   hits.missing_setSizes <- as.character(setdiff(c(1:6),
                                    as.integer(unlist(dimnames(set_size.hits)))))
   
-  
-  ## NEED TO FIX HOW WE ARE INPUTTING ZEROS FOR THESE SET SIZES
-  
   fas.missing_setSizes <- as.character(setdiff(c(1:6)
                                   ,as.integer(unlist(dimnames(set_size.fas))))) 
   
@@ -118,14 +115,13 @@ Estimate_K <- function(trial_type,responses,set_sizes){
 # --- Extract Sj Numbers from Google Sheets ---
 gs4_auth(email = 'jordangarrett@ucsb.edu')
 exp_info <- read_sheet('https://docs.google.com/spreadsheets/d/1CtW0BKpcAn0M8aK9PbRPH2Tz7zLYz0nSRQ7KenTdroU/edit#gid=0')
-k_fileNumbs <- exp_info$`File Suffix #...9`
 subjects <- exp_info$`Sj ID`
 
 subjects <- subjects[!is.na(subjects)]
 
 
 # for sessions that didn't work out (see df notes)
-exclude_subs <- c(2)
+exclude_subs <- c(2,3,4,9,10,12,14,19)
 
 subjects <- setdiff(subjects,exclude_subs)
 # --- Load file containing already calculated Sj Estimates ---
@@ -138,6 +134,11 @@ if (file.exists(file.path(dataDir,'All_K_Estimates.csv'))){
   
 } else {
   master_k_df <- data.frame(Sj_Numb = double(),
+                            Set1_K = double(),
+                            Set2_K = double(),
+                            Set3_K = double(),
+                            Set4_K = double(),
+                            Set5_K = double(),
                             Set6_K = double(),
                             Kmax = double())
 }
@@ -154,14 +155,25 @@ jatos_file.Prefix <- 'jatos_results_'
 
 # Loop through and extract data from files
 all.K_estimates <- data.frame(Sj_Numb = double(),
+                              Set1_K = double(),
+                              Set2_K = double(),
+                              Set3_K = double(),
+                              Set4_K = double(),
+                              Set5_K = double(),
                               Set6_K = double(),
                               Kmax = double())
+
 for(iSub in 1:length(subjects)){
   
   sj_numb <- subjects[iSub]
   
   # grab file suffix from google sheet
-  file_suffix <- as.character(k_fileNumbs[iSub])
+  file_suffix <- as.character(
+    exp_info$`File Suffix #...9`[which(exp_info$`Sj ID` == sj_numb)])
+  
+  if (is.na(file_suffix)){
+    next
+  }
   
   k_filename <- paste(jatos_file.Prefix,file_suffix,
                       '.txt',sep = '')
@@ -183,11 +195,20 @@ for(iSub in 1:length(subjects)){
   Kmax <- round(max(sdt.k.estimates['K']),2)
   
   all.K_estimates[iSub,'Sj_Numb'] <- sj_numb
+  all.K_estimates[iSub,'Set1_K'] <- round(sdt.k.estimates[1,'K'],2)
+  all.K_estimates[iSub,'Set2_K'] <- round(sdt.k.estimates[2,'K'],2)
+  all.K_estimates[iSub,'Set3_K'] <- round(sdt.k.estimates[3,'K'],2)
+  all.K_estimates[iSub,'Set4_K'] <- round(sdt.k.estimates[4,'K'],2)
+  all.K_estimates[iSub,'Set5_K'] <- round(sdt.k.estimates[5,'K'],2)
   all.K_estimates[iSub,'Set6_K'] <- round(sdt.k.estimates[6,'K'],2)
   all.K_estimates[iSub,'Kmax'] <- Kmax
+  all.K_estimates[iSub,'Overall_HitRate'] <- round(mean(sdt.k.estimates[['Hr']]),2)
+  all.K_estimates[iSub,'Overall_FARate'] <- round(mean(sdt.k.estimates[['FA']]),2)
 }
 
 master_k_df <- rbind(master_k_df,all.K_estimates)
+
+master_k_df <- na.omit(master_k_df)
 
 write.csv(master_k_df,
           file.path(saveDir,'All_K_Estimates.csv'),

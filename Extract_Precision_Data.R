@@ -1,6 +1,6 @@
 "
 -----------------------------------------------------------
-Compute error estimates for WM precision task
+Compute Sj error estimates for WM precision task
 
 
 Author: Jordan Garrett
@@ -16,6 +16,7 @@ if (!require('rlist')) install.packages('rlist')
 library(rjson)
 library(googlesheets4)
 library(rlist)
+library(readr)
 
 
 # ------------- Set up Directories -------------
@@ -26,8 +27,8 @@ if (Sys.info()['sysname'] == 'Windows'){
 }
 
 dataDir <- file.path(parentDir,'Raw_Data/Precision_Task')
-saveDir <- file.path(parentDir,'Data_Compiled/')
-
+saveDir <- file.path(parentDir,'Data/Precision/')
+compiledDir <- file.path(parentDir, 'Data_Compiled/')
 
 setwd(dataDir)
 
@@ -37,14 +38,20 @@ exp_info <- read_sheet('https://docs.google.com/spreadsheets/d/1CtW0BKpcAn0M8aK9
 
 
 subjects <- exp_info$`Sj ID`
-precision_fileNumbs <- exp_info$`File Suffix #...15`
 
 subjects <- subjects[!is.na(subjects)]
 
 #this is key for deciding which subjects are processed
-exclude_subs <- c(1:4,9:10,12,14) 
+exclude_subs <- c(2:4,9:10,12,14,19) 
 
 subjects <- setdiff(subjects,exclude_subs)
+
+# check which subjects have already been run
+prev_sub.files <- list.files(saveDir)
+prev_subs <- unlist(lapply(prev_sub.files,parse_number))
+
+
+#subjects <- setdiff(subjects,prev_subs)
 
 loc_bins <- c(0,60,120,180,240,300)
 
@@ -61,6 +68,9 @@ for stats.
 compute_circularStats <- function(degrees_error){
   
   stats <- list()
+  
+  # remove NAs
+  degrees_error <- degrees_error[!is.na(degrees_error)]
   
   # convert angles to radians
   error.rad <- abs(degrees_error) * pi/180
@@ -87,7 +97,6 @@ compute_circularStats <- function(degrees_error){
 }
 
 
-
 # ----------- Loop through Sj Files --------
 
 # making this static to ensure the index doesn't change across subjects
@@ -99,37 +108,46 @@ all_combos <- list(c(0),c(0,60),c(0,120),c(0,180),c(0,240),c(0,300),
                    c(300),
                    c(0,60,120,180,240,300))
 
-# check if we have already ran previous subjects. If so, then load that file
-if(file.exists(file.path(saveDir,'All_Sj_Precision_Data.RDS'))){
-  all_sj.precision_data <- readRDS(file.path(saveDir,'All_Sj_Precision_Data.RDS'))
-} else {
-  all_sj.precision_data <- list()
-}
-
 
 jatos_file.Prefix <- 'jatos_results_'
 
-# use for checking if the sample orientations are truly uniform
-all_samp_orientations <- c()
 
 # use for categorical confusion matrices. Treat 0 and 360 as the same
 cc_bins <- seq(0,315,by=45)
+
+sj.precision_data <- c()
+
+allSj_overall.loc_error <- c()
+
+# create vectors of all location error to look at distributions
+allSj_overall.loc_error <- c()
+allSj_overall.loc_error$error <- allSj_overall.loc_error$sj_nums <- vector(mode='list',length=length(loc_bins))
+ 
+allSj_overall.loc_error$resp_order <- allSj_overall.loc_error$error
+allSj_overall.loc_error$samp_probeAngles <- allSj_overall.loc_error$error
+allSj_overall.loc_error$resp_probeAngles <- allSj_overall.loc_error$error
+allSj_overall.loc_error$setSizes <- allSj_overall.loc_error$error
+
+allSj_ss.loc_error <- c()
+allSj_ss.loc_error$error <- allSj_ss.loc_error$sj_nums <- lapply(allSj_ss.loc_error$sj_nums <- vector(mode='list',length=3),
+                             function(x) x <- vector(mode='list',length=length(loc_bins)))
+
+
+
 
 for(iSub in 1:length(subjects)){
   
   sj_numb <- subjects[iSub]
   
-  # if subject was previously process, skip them
-  if(sj_numb %in% all_sj.precision_data$sj_numbs){
-    next
-  }
+  file_suffix <- as.character(
+    exp_info$`File Suffix #...15`[which(exp_info$`Sj ID` == sj_numb)])
   
   # in case we haven't ran the second session for this sj
-  if(is.na(precision_fileNumbs[sj_numb])){
+  if(is.na(file_suffix)){
+    print(sj_numb)
     next
   }
   
-  file_suffix <- as.character(precision_fileNumbs[sj_numb])
   
   precision_filename <- paste(jatos_file.Prefix,
                               file_suffix,
@@ -144,8 +162,6 @@ for(iSub in 1:length(subjects)){
   #---------------- Overall Precision ----------------------
   sample_orientations <- unlist(trial_data$SampleProbeAngles)
   
-  all_samp_orientations <- rbind(all_samp_orientations,sample_orientations)
-
   resp_orientations <- unlist(trial_data$RespProbeAngles)
   
   overall.resp_error <- sample_orientations - resp_orientations
@@ -159,8 +175,9 @@ for(iSub in 1:length(subjects)){
   # Note: each combo length will tell us the set size, so can use that to parse out set size x combo precision
   
   # there should be an equal number of trials per location combination for comparison (currently =20)
+  # data lost for some subjects though, which we will have to code as NA
   all_combo.trial_idx <- matrix(nrow = length(all_combos), 
-                            ncol = length(trial_data$Trial)/length(all_combos))
+                            ncol = 20)
   combo.overallError_mean <- c()
   combo.overallError_MRVL <- c()
   for (iLoc_comb in 1:length(all_combos)){
@@ -168,8 +185,18 @@ for(iSub in 1:length(subjects)){
     n_combo <- length(list.search(sample_loc.bins, 
                                   identical(.,current_combo)))
     
-    all_combo.trial_idx[iLoc_comb,] <- list.findi(sample_loc.bins, 
-                                              identical(., current_combo), n=n_combo)
+    # for the lost trials
+    if (n_combo != 20){
+      combo.trial_idx <- list.findi(sample_loc.bins, 
+                                    identical(., current_combo), n=n_combo)
+      combo.trial_idx <- c(combo.trial_idx,rep(NA,20-n_combo))
+      all_combo.trial_idx[iLoc_comb,] <- combo.trial_idx
+      
+    } else{
+      all_combo.trial_idx[iLoc_comb,] <- list.findi(sample_loc.bins, 
+                                                    identical(., current_combo), n=n_combo)
+    }
+   
     
     combo.samples <- sample_orientations[all_combo.trial_idx[iLoc_comb,]]
     combo.responses <- resp_orientations[all_combo.trial_idx[iLoc_comb,]]
@@ -199,6 +226,7 @@ for(iSub in 1:length(subjects)){
     
     set_size.error <- set_size.samples - set_size.responses
     
+    
     set_size.stats <- compute_circularStats(set_size.error)
     
     set_size.error_mean[iSet_size] <- set_size.stats$mean
@@ -223,21 +251,53 @@ for(iSub in 1:length(subjects)){
     
     loc.samp_orientations <- trial_data$SampleProbeAngles[loc.trial_idx]
     loc.resp_orientations <- trial_data$RespProbeAngles[loc.trial_idx]
+    loc.resp_orders <- trial_data$RespOrder[loc.trial_idx]
+    loc.set_sizes <- trial_data$SetSize[loc.trial_idx]
     
-    loc.error <- c(rep(0,length(loc_subset_trials)))
+    loc.resp_probe <- loc.samp_probe <- loc.error <- c(rep(0,length(loc_subset_trials)))
+    loc.resp_order <- c(rep(0,length(loc_subset_trials)))
+    loc.ss <- loc.resp_probe
     for (iTrial in 1:length(loc_subset_trials)){
-      loc.samp_probe <- unlist(loc.samp_orientations[iTrial])[loc.trial_pos[iTrial]]
-      loc.resp_probe <- unlist(loc.resp_orientations[iTrial])[loc.trial_pos[iTrial]]
-      loc.error[iTrial] <- loc.samp_probe - loc.resp_probe
+      loc.samp_probe[iTrial] <- unlist(loc.samp_orientations[iTrial])[loc.trial_pos[iTrial]]
+      loc.resp_probe[iTrial] <- unlist(loc.resp_orientations[iTrial])[loc.trial_pos[iTrial]]
+      loc.error[iTrial] <- loc.samp_probe[iTrial] - loc.resp_probe[iTrial]
+      
+      tryCatch({
+        loc.resp_order[iTrial] <- unlist(loc.resp_orders[iTrial])[loc.trial_pos[iTrial]]
+      },
+      error = function(e){
+        loc.resp_order[iTrial] <- NA #response order not recorded for some trials
+      })
+      
+      loc.ss[iTrial] <- loc.set_sizes[iTrial]
     }
     
     overall_locStats <- compute_circularStats(loc.error)
     overall_locError.mean[iLoc] <- overall_locStats$mean
     overall_locError.MRVL[iLoc] <- overall_locStats$MRVL
     
+    allSj_overall.loc_error$samp_probeAngles[[iLoc]] <- append(allSj_overall.loc_error$samp_probeAngles[[iLoc]],
+                                                         loc.samp_probe)
+    
+    allSj_overall.loc_error$resp_probeAngles[[iLoc]] <- append(allSj_overall.loc_error$resp_probeAngles[[iLoc]],
+                                                       loc.resp_probe)
+    
+    allSj_overall.loc_error$error[[iLoc]] <- append(allSj_overall.loc_error$error[[iLoc]],
+                                            loc.error)
+    
+    allSj_overall.loc_error$setSizes[[iLoc]] <- append(allSj_overall.loc_error$setSizes[[iLoc]],
+                                                   loc.ss)
+    
+    allSj_overall.loc_error$sj_nums[[iLoc]] <- append(allSj_overall.loc_error$sj_nums[[iLoc]],
+                                                    rep(sj_numb,length(loc.error)))
+    
+    allSj_overall.loc_error$resp_order[[iLoc]] <- append(allSj_overall.loc_error$resp_order[[iLoc]],
+                                                      loc.resp_order)
   }
   
-  # ------------------ Error at location x Set Size -------------------------
+  # ------------------ Error at location x Set Size-------------------------
+  
+  # Combos
   
   # Loop through locations and then each location combo
   # Get error for location of interest when location j present
@@ -246,6 +306,8 @@ for(iSub in 1:length(subjects)){
   ss2.combos <- all_combos[ss2.combo_idx]
   
   ss2.combo_trials <- all_combo.trial_idx[ss2.combo_idx,]
+  
+  ss2.combo_trials <- ss2.combo_trials[!is.na(ss2.combo_trials)]
   
   ss2.raw_error <- data.frame()
   for(iTrial in 1:length(ss2.combo_trials)){
@@ -321,6 +383,43 @@ for(iSub in 1:length(subjects)){
   ss6_loc.mean_error <- unlist(lapply(ss6_loc.stats, function(x){x$mean}))
   ss6_loc.MRVL <- unlist(lapply(ss6_loc.stats, function(x){x$MRVL}))
   
+  # Get average error at location for set size regardless of combo
+  ss.all_loc.meanError <- ss.all_loc.MRVL <- array(rep(0,3*length(loc_bins)),
+                                               dim=c(3,length(loc_bins)))
+   
+  for (iSet in 1:length(set_sizes)){
+    current_set <- set_sizes[iSet]
+    ssTrials_idx <- which(trial_data$SetSize==current_set)
+    for (iLoc in 1:length(loc_bins)){
+      current_loc <- loc_bins[iLoc]
+      locTrials_idx <- which(sapply(trial_data$SampleLocBin
+                                    ,function(x) {current_loc %in% x}))
+      ss.loc_trials_idx <- intersect(ssTrials_idx,locTrials_idx)
+      
+      # unlist trials of interest location bins and grab those of interest
+      locBin_trialIdx <- which(unlist(trial_data$SampleLocBin[ss.loc_trials_idx])==current_loc)
+      
+      sample_orient <- unlist(trial_data$SampleProbeAngles[ss.loc_trials_idx])[locBin_trialIdx]
+      resp_orient <- unlist(trial_data$RespProbeAngles[ss.loc_trials_idx])[locBin_trialIdx]
+      
+      error <- sample_orient-resp_orient
+      
+      stats <- compute_circularStats(error)
+      
+      ss.all_loc.meanError[iSet,iLoc] <- stats$mean
+      ss.all_loc.MRVL[iSet,iLoc] <- stats$MRVL
+      
+      # compile error across subjects for dists
+      #allSj_ss.loc_error$error[[iSet]][[iLoc]] <- append(allSj_ss.loc_error$error[[iSet]][[iLoc]],
+                                                   #error)
+      
+      #allSj_ss.loc_error$sj_nums[[iSet]][[iLoc]] <- append(allSj_ss.loc_error$sj_nums[[iSet]][[iLoc]],
+                                                         #rep(sj_numb,length(error)))
+      
+    }
+  }
+  dimnames(ss.all_loc.meanError) <- dimnames(ss.all_loc.MRVL) <- list(c(1,2,6),loc_bins)
+  
   # ---------------- Categorical Confusion Matrices ----------------------
   # bin sample and response angles into 45 degree bins
   cc_matrix <- array(rep(0,2*length(loc_bins)*length(loc_bins)),
@@ -370,49 +469,62 @@ for(iSub in 1:length(subjects)){
     #normalize the confusion matrix by dividing each column
     #by the number of trials the location appears
     loc.freq <- as.vector(table(unlist(trial_data$SampleLocBin[ss_trials])))
-    cc_matrix[iSet_size,,] <- cc_matrix[iSet_size,,] / loc.freq
+    #cc_matrix[iSet_size,,] <- cc_matrix[iSet_size,,] / loc.freq
     
   }
-  
   
   # ---------------- Store Error Data ----------------
   
   #overall precision
-  all_sj.precision_data$overall$mean_error[iSub] <- overall_offset_error.mean
-  all_sj.precision_data$overall$MRVL[iSub] <- overall_offset_error.MRVL
+  sj.precision_data$overall$mean_error <- overall_offset_error.mean
+  sj.precision_data$overall$MRVL <- overall_offset_error.MRVL
   
   #overall precision per combo
-  all_sj.precision_data$combo_overall$mean_error[[iSub]] <- combo.overallError_mean
-  all_sj.precision_data$combo_overall$MRVL[[iSub]] <- combo.overallError_MRVL
+  sj.precision_data$combo_overall$mean_error <- combo.overallError_mean
+  sj.precision_data$combo_overall$MRVL <- combo.overallError_MRVL
   
   #overall precision per set size
-  all_sj.precision_data$ss_overall$mean_error[[iSub]] <- set_size.error_mean
-  all_sj.precision_data$ss_overall$MRVL[[iSub]] <- set_size.error_MRVL 
+  sj.precision_data$ss_overall$mean_error <- set_size.error_mean
+  sj.precision_data$ss_overall$MRVL <- set_size.error_MRVL 
   
   #overall precision per location
-  all_sj.precision_data$location_overall$mean_error[[iSub]] <- overall_locError.mean
-  all_sj.precision_data$location_overall$MRVL[[iSub]] <- overall_locError.MRVL
+  sj.precision_data$location_overall$mean_error <- overall_locError.mean
+  sj.precision_data$location_overall$MRVL <- overall_locError.MRVL
   
   #error per location x set size
-  all_sj.precision_data$location.by.ss$ss1$mean_error[[iSub]] <- ss1_loc.mean_error
-  all_sj.precision_data$location.by.ss$ss1$MRVL[[iSub]] <- ss1_loc.MRVL
+  sj.precision_data$location.by.ss$ss1$mean_error <- ss1_loc.mean_error
+  sj.precision_data$location.by.ss$ss1$MRVL <- ss1_loc.MRVL
   
-  all_sj.precision_data$location.by.ss$ss2$mean_error[[iSub]] <- confusion_ss2.mean
-  all_sj.precision_data$location.by.ss$ss2$MRVL[[iSub]] <- confusion_ss2.MRVL
+  sj.precision_data$location.by.ss$ss2$mean_error <- confusion_ss2.mean
+  sj.precision_data$location.by.ss$ss2$MRVL <- confusion_ss2.MRVL
   
-  all_sj.precision_data$location.by.ss$ss6$mean_error[[iSub]] <- ss6_loc.mean_error
-  all_sj.precision_data$location.by.ss$ss6$MRVL[[iSub]] <- ss6_loc.MRVL
+  sj.precision_data$location.by.ss$ss6$mean_error <- ss6_loc.mean_error
+  sj.precision_data$location.by.ss$ss6$MRVL <- ss6_loc.MRVL
+  
+  sj.precision_data$location.by.ss$overall$mean_error <- ss.all_loc.meanError
+  sj.precision_data$location.by.ss$overall$MRVL <- ss.all_loc.MRVL
   
   #categorical confusion matrices
-  all_sj.precision_data$cc_matrix[[iSub]] <- cc_matrix 
+  sj.precision_data$cc_matrix <- cc_matrix 
+  
+  sj.precision_data$sj_numb <- sj_numb
+  sj.precision_data$loc_combos <- all_combos
+  
+  # save data 
+  saveRDS(sj.precision_data, 
+          file = file.path(saveDir,sprintf('Sj%02d_Precision_Data.RDS',sj_numb)))
+  
 }
 
-all_sj.precision_data$sj_numbs <- subjects
-all_sj.precision_data$loc_combos <- all_combos
+allSj_errorDists <- list()
+allSj_errorDists$loc_overall <- allSj_overall.loc_error
+#allSj_errorDists$ss.loc <- allSj_ss.loc_error
+
+# save distributions of error across all subjects
+saveRDS(allSj_errorDists,
+        file = file.path(compiledDir, 'All_Sj_errorDist.RDS'))
 
 
-# save data 
-saveRDS(all_sj.precision_data, file = file.path(saveDir,'All_Sj_Precision_Data.RDS'))
 
 
 
