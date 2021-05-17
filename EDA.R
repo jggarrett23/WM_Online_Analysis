@@ -261,7 +261,7 @@ MRVL.loc_ss.plot <- ggplot(data=loc.ss_error.summary,
         axis.text = element_text(size=12,color='black'),
         axis.title = element_text(size=14,color='black'))
 
-ggsave('loc_by_ss_meanError.jpg',
+ggsave('loc_by_ss_MRVL.jpg',
        plot = MRVL.loc_ss.plot,
        path = plotDir)
 
