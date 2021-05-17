@@ -127,6 +127,7 @@ allSj_overall.loc_error$resp_order <- allSj_overall.loc_error$error
 allSj_overall.loc_error$samp_probeAngles <- allSj_overall.loc_error$error
 allSj_overall.loc_error$resp_probeAngles <- allSj_overall.loc_error$error
 allSj_overall.loc_error$setSizes <- allSj_overall.loc_error$error
+allSj_overall.loc_error$combo_idx <- allSj_overall.loc_error$error
 
 allSj_ss.loc_error <- c()
 allSj_ss.loc_error$error <- allSj_ss.loc_error$sj_nums <- lapply(allSj_ss.loc_error$sj_nums <- vector(mode='list',length=3),
@@ -249,6 +250,7 @@ for(iSub in 1:length(subjects)){
     # get index of location on subset trials
     loc.trial_pos <- unlist(lapply(sample_loc.bins[loc.trial_idx],function(x){match(current_loc,x)}))
     
+    loc.samp_bin <- trial_data$SampleLocBin[loc.trial_idx]
     loc.samp_orientations <- trial_data$SampleProbeAngles[loc.trial_idx]
     loc.resp_orientations <- trial_data$RespProbeAngles[loc.trial_idx]
     loc.resp_orders <- trial_data$RespOrder[loc.trial_idx]
@@ -256,7 +258,7 @@ for(iSub in 1:length(subjects)){
     
     loc.resp_probe <- loc.samp_probe <- loc.error <- c(rep(0,length(loc_subset_trials)))
     loc.resp_order <- c(rep(0,length(loc_subset_trials)))
-    loc.ss <- loc.resp_probe
+    loc.combo_idx <- loc.ss <- loc.resp_probe
     for (iTrial in 1:length(loc_subset_trials)){
       loc.samp_probe[iTrial] <- unlist(loc.samp_orientations[iTrial])[loc.trial_pos[iTrial]]
       loc.resp_probe[iTrial] <- unlist(loc.resp_orientations[iTrial])[loc.trial_pos[iTrial]]
@@ -270,6 +272,9 @@ for(iSub in 1:length(subjects)){
       })
       
       loc.ss[iTrial] <- loc.set_sizes[iTrial]
+      
+      # get combo to do correlation matrices
+      loc.combo_idx[iTrial] <- list.findi(all_combos,identical(.,loc.samp_bin[[iTrial]]))
     }
     
     overall_locStats <- compute_circularStats(loc.error)
@@ -293,6 +298,9 @@ for(iSub in 1:length(subjects)){
     
     allSj_overall.loc_error$resp_order[[iLoc]] <- append(allSj_overall.loc_error$resp_order[[iLoc]],
                                                       loc.resp_order)
+    
+    allSj_overall.loc_error$combo_idx[[iLoc]] <- append(allSj_overall.loc_error$combo_idx[[iLoc]],
+                                                        loc.combo_idx)
   }
   
   # ------------------ Error at location x Set Size-------------------------
@@ -518,6 +526,7 @@ for(iSub in 1:length(subjects)){
 
 allSj_errorDists <- list()
 allSj_errorDists$loc_overall <- allSj_overall.loc_error
+allSj_errorDists$loc_overall$combos <- all_combos
 #allSj_errorDists$ss.loc <- allSj_ss.loc_error
 
 # save distributions of error across all subjects
